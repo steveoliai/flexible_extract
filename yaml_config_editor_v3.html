@@ -330,7 +330,7 @@
                     </div>
                     <div class="form-group">
                         <label>Global Object Name Template:</label>
-                        <input type="text" id="global_object_name" value="exports/{{schema}}/{{table}}/{{part_date}}/run={{run_ts}}.parquet">
+                        <input type="text" id="global_object_name" value="exports/{{schema}}/{{table}}/{{yesterday}}/run={{run_ts}}.parquet">
                     </div>
                     
                     <!-- GCS Config -->
@@ -439,8 +439,8 @@
                 timestamp_columns: '[createdon]',
                 last_n_days: 3,
                 upper_bound_inclusive: false,
-                output_filename: '{{schema}}_{{table}}_{{part_date}}.parquet',
-                object_name: 'exports/{{schema}}/{{table}}/dt={{part_date}}/extract_{{run_ts}}.parquet',
+                output_filename: '{{schema}}_{{table}}_{{yesterday}}.parquet',
+                object_name: 'exports/{{schema}}/{{table}}/dt={{yesterday}}/extract_{{run_ts}}.parquet',
                 where_extra: '',
                 query: ''
             },
@@ -467,8 +467,8 @@
                 timestamp_naive: true,
                 last_n_days: 1,
                 upper_bound_inclusive: false,
-                output_filename: 'simplequery_{{part_date}}.parquet',
-                object_name: 'exports/simplequery/dt={{part_date}}/users_{{run_ts}}.parquet',
+                output_filename: 'simplequery_{{yesterday}}.parquet',
+                object_name: 'exports/simplequery/dt={{yesterday}}/users_{{run_ts}}.parquet',
                 where_extra: '',
                 query: 'SELECT *\nFROM bigclient.childtable\nWHERE 1 = 1\n-- this will be converted to subquery and additional WHERE clause injected with timestamp condition'
             }
@@ -574,12 +574,12 @@
                     </div>
                     <div class="form-group">
                         <label>Output Filename Template (optional):</label>
-                        <input type="text" value="${source.output_filename}" onchange="updateSource(${index}, 'output_filename', this.value)" placeholder="{{schema}}_{{table}}_{{part_date}}.parquet">
+                        <input type="text" value="${source.output_filename}" onchange="updateSource(${index}, 'output_filename', this.value)" placeholder="{{schema}}_{{table}}_{{yesterday}}.parquet">
                     </div>
 
                     <div class="form-group">
                         <label>Object Name Template (optional):</label>
-                        <input type="text" value="${source.object_name}" onchange="updateSource(${index}, 'object_name', this.value)" placeholder="exports/{{schema}}/{{table}}/dt={{part_date}}/extract_{{run_ts}}.parquet">
+                        <input type="text" value="${source.object_name}" onchange="updateSource(${index}, 'object_name', this.value)" placeholder="exports/{{schema}}/{{table}}/dt={{yesterday}}/extract_{{run_ts}}.parquet">
                     </div>
 
                     <div class="form-group">
