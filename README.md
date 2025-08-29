@@ -78,8 +78,8 @@ sources:
     timestamp_column: createdon          # Column used for time-based filtering
     last_n_days: 3                      # Extract data from last N days
     upper_bound_inclusive: false         # Use < (false) or <= (true) for upper bound
-    output_filename: "{{schema}}_{{table}}_{{part_date}}.parquet"
-    object_name: "exports/{{schema}}/{{table}}/dt={{part_date}}/extract_{{run_ts}}.parquet"
+    output_filename: "{{schema}}_{{table}}_{{yesterday}}.parquet"
+    object_name: "exports/{{schema}}/{{table}}/dt={{yesterday}}/extract_{{run_ts}}.parquet"
 ```
 
 #### Custom Query Example:
@@ -118,7 +118,7 @@ The following variables are available for `output_filename` and `object_name` te
 
 - `{{schema}}` - Database schema name
 - `{{table}}` - Table name
-- `{{part_date}}` - Partition date (YYYY-MM-DD format)
+- `{{yesterday}}` - Partition date (YYYY-MM-DD format)
 - `{{run_ts}}` - Execution timestamp
 
 ### Target Storage (`target`)
@@ -129,7 +129,7 @@ Configure where to store the extracted Parquet files:
 ```yaml
 target:
   type: gcs
-  object_name: "exports/{{schema}}/{{table}}/{{part_date}}/run={{run_ts}}.parquet"
+  object_name: "exports/{{schema}}/{{table}}/{{yesterday}}/run={{run_ts}}.parquet"
   gcs:
     bucket: your_GCP_bucket
     service_account_key_file: /path/to/service-account-key.json
@@ -151,7 +151,7 @@ target:
 ```yaml
 target:
   type: azure        # gcs | s3 | azure | local
-  object_name: "exports/{{schema}}/{{table}}/{{part_date}}/run={{run_ts}}.parquet"
+  object_name: "exports/{{schema}}/{{table}}/{{yesterday}}/run={{run_ts}}.parquet"
   azure:
     container: my-container
     connection_string: "DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=***;EndpointSuffix=core.windows.net"
@@ -225,7 +225,7 @@ sources:
     table: transactions
     timestamp_column: created_at
     last_n_days: 30
-    output_filename: "historical_{{table}}_{{part_date}}.parquet"
+    output_filename: "historical_{{table}}_{{yesterday}}.parquet"
 ```
 
 ## Troubleshooting
