@@ -101,6 +101,22 @@ def deduce_sqlalchemy_url(dbconf: Dict[str, Any]) -> str:
 
     raise ValueError(f"Unsupported or missing db.type: {db_type}")
 
+def _guess_epoch_unit(int_series: pd.Series) -> str:
+    """
+    Guess epoch unit from magnitude; returns one of 's','ms','us','ns'.
+    Uses first non-null value as a heuristic.
+    """
+    s = int_series.dropna()
+    if s.empty:
+        return "s"
+    v = float(s.iloc[0])
+    if v < 1e11:    # < 100,000,000,000  -> seconds
+        return "s"
+    if v < 1e14:    # < 100,000,000,000,000 -> milliseconds
+        return "ms"
+    if v < 1e17:    # < 100,000,000,000,000,000 -> microseconds
+        return "us"
+    return "ns"     # otherwise treat as nanoseconds
 
 def create_db_engine(dbconf: Dict[str, Any]) -> Engine:
     sqlalchemy_url = deduce_sqlalchemy_url(dbconf)
@@ -266,8 +282,14 @@ def extract_to_parquet(
     parquet_compression: str,
     ts_coerce: Optional[Dict[str, Any]] = None,
 ) -> int:
+    """
+    Stream query → single Parquet.
+    - ts_coerce: {"columns": [..], "utc": True/False, "naive": True/False}
+    """
     total_rows = 0
     writer = None
+    target_arrow_schema = None
+
     ts_cols = (ts_coerce or {}).get("columns", []) or []
     coerce_utc = bool((ts_coerce or {}).get("utc", True))
     make_naive = bool((ts_coerce or {}).get("naive", True))
@@ -279,27 +301,73 @@ def extract_to_parquet(
                     logger.info("    (no rows)")
                 break
 
-            # --- Timestamp coercion (so Parquet gets real timestamps, not int64) ---
+            # ---- Timestamp coercion to ensure Parquet logical timestamps ----
             for col in ts_cols:
-                if col in chunk.columns:
-                    # Coerce to datetime; errors='coerce' turns bad values into NaT
-                    chunk[col] = pd.to_datetime(chunk[col], utc=coerce_utc, errors="coerce")
-                    if make_naive:
-                        # Convert to UTC-naive (many readers prefer this)
-                        # If tz-aware, convert to UTC then drop tz
-                        if getattr(chunk[col].dtype, "tz", None) is not None:
-                            chunk[col] = chunk[col].dt.tz_convert("UTC").dt.tz_localize(None)
+                if col not in chunk.columns:
+                    continue
 
+                # Already datetime?
+                if pd.api.types.is_datetime64_any_dtype(chunk[col]):
+                    dtser = chunk[col]
+                    # normalize tz → UTC‑naive if requested
+                    if getattr(dtser.dtype, "tz", None) is not None:
+                        if coerce_utc:
+                            dtser = dtser.dt.tz_convert("UTC")
+                        # drop tz to store as naive UTC
+                        if make_naive:
+                            dtser = dtser.dt.tz_localize(None)
+                    chunk[col] = dtser.astype("datetime64[ns]")
+                else:
+                    # Convert from integers/strings → datetime
+                    if pd.api.types.is_integer_dtype(chunk[col]):
+                        unit = _guess_epoch_unit(chunk[col])
+                        dtser = pd.to_datetime(chunk[col], unit=unit, utc=coerce_utc, errors="coerce")
+                    else:
+                        dtser = pd.to_datetime(chunk[col], utc=coerce_utc, errors="coerce")
+                    # Ensure UTC‑naive if requested
+                    if getattr(dtser.dtype, "tz", None) is not None:
+                        if coerce_utc:
+                            dtser = dtser.dt.tz_convert("UTC")
+                        if make_naive:
+                            dtser = dtser.dt.tz_localize(None)
+                    chunk[col] = dtser.astype("datetime64[ns]")
+
+            # Build Arrow table
             table = pa.Table.from_pandas(chunk, preserve_index=False)
+
+            # On first non-empty chunk, fix schema to force timestamp logical types
             if writer is None:
                 os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-                writer = pq.ParquetWriter(out_path, table.schema, compression=parquet_compression)
+
+                if ts_cols:
+                    fields = []
+                    schema_names = table.schema.names
+                    # map desired types: chosen 'timestamp("us")' for wide compatibility
+                    for name in schema_names:
+                        if name in ts_cols:
+                            fields.append(pa.field(name, pa.timestamp("us")))
+                        else:
+                            fields.append(pa.field(name, table.schema.field(name).type))
+                    target_arrow_schema = pa.schema(fields)
+                    # cast current chunk to target schema
+                    table = table.cast(target_arrow_schema)
+                    writer = pq.ParquetWriter(out_path, target_arrow_schema, compression=parquet_compression)
+                else:
+                    writer = pq.ParquetWriter(out_path, table.schema, compression=parquet_compression)
+
+            else:
+                # Keep schema stable across chunks
+                if target_arrow_schema is not None:
+                    table = table.cast(target_arrow_schema)
+
             writer.write_table(table)
             total_rows += len(chunk)
             logger.info("    wrote chunk %d (%d rows)", i + 1, len(chunk))
+
     finally:
         if writer is not None:
             writer.close()
+
     return total_rows
 
 
