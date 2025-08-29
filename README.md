@@ -50,7 +50,7 @@ For Oracle databases:
 ```yaml
 source_database:
   type: oracle
-  # Use either service_name OR sid
+  # Use either service_name OR sid 
   service_name: ORCLPDB1   # Oracle service name
   # sid: ORCL              # Oracle SID (alternative)
   # For Oracle Autonomous DB (type: oracle) Supply a single URL that includes your DSN (URL-encoded)
