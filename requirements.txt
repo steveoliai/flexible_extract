@@ -1,0 +1,10 @@
+PyYAML==6.0.2
+SQLAlchemy==2.0.35
+psycopg2-binary==2.9.9         # PostgreSQL
+PyMySQL==1.1.1                 # MySQL
+oracledb==2.5.1                # Oracle (thin mode; no Instant Client needed)
+pyodbc==5.1.0                  # SQL Server (needs OS ODBC driver installed)
+pandas==2.2.2
+pyarrow==17.0.0
+boto3==1.34.162                # S3
+google-cloud-storage==2.17.0   # GCS

@@ -1,0 +1,94 @@
+# Which RDBMS and how to connect
+source_database:
+  # Supported: postgresql, mysql, oracle, mssql (sql server)
+  type: postgresql
+  host: 127.0.0.1
+  port: 5432
+  database: postgres
+  user: user
+  password: secret
+  # Alternative: provide a full SQLAlchemy URL and omit the above
+  # url: postgresql+psycopg2://myuser:mypassword@127.0.0.1:5432/mydb
+
+  # For Oracle (if type: oracle), use one of:
+  # service_name: ORCLPDB1
+  # sid: ORCL
+  #
+  # For SQL Server (type: mssql), you can optionally set:
+  # odbc_driver: ODBC Driver 18 for SQL Server
+
+# Multiple sources to extract
+sources:
+  # 1) Table extract with last-N-days and DAILY batching (→ multi-file)
+  - name: parenttable
+    schema: bigclient
+    table: parenttable
+    timestamp_column: createdon
+    # Optionally coerce additional timestamp-like columns:
+    timestamp_utc: true             # coerce as UTC (default true)
+    timestamp_naive: true           # drop tz info so Parquet is tz‑naive UTC (default true)
+    last_n_days: 3                 # window start = now_utc - 3 days
+    upper_bound_inclusive: false   # <-- NEW: use < to_utc (false) or <= to_utc (true)
+    # Per-partition templated names
+    output_filename: "{{schema}}_{{table}}_{{part_date}}.parquet"
+    object_name: "exports/{{schema}}/{{table}}/dt={{part_date}}/extract_{{run_ts}}.parquet"
+    # Optional extra row filter (SQL text)
+    # where_extra: "status <> 'TEST'"
+
+  # 2) Another table, inclusive upper-bound
+  - name: childtable
+    schema: bigclient
+    table: childtable
+    timestamp_column: modifiedon
+    # Optionally coerce additional timestamp-like columns:
+    timestamp_utc: true             # coerce as UTC (default true)
+    timestamp_naive: true           # drop tz info so Parquet is tz‑naive UTC (default true)    
+    last_n_days: 1
+    upper_bound_inclusive: true    # <= to_utc
+
+  # 3) Custom query 
+  - name: simplequery
+    query: |
+      SELECT *
+      FROM bigclient.childtable
+      WHERE 1 = 1
+      -- this will be converted to subquery and additional WHERE clause injected with timestamp condition
+    timestamp_column: modifiedon
+    # Optionally coerce additional timestamp-like columns:
+    timestamp_utc: true             # coerce as UTC (default true)
+    timestamp_columns: [modifiedon]   # <-- optional: ensure Parquet writes real datetimes
+    timestamp_naive: true           # drop tz info so Parquet is tz‑naive UTC (default true)
+    last_n_days: 1
+    output_filename: "simplequery_{{part_date}}.parquet"
+    object_name: "exports/simplequery/dt={{part_date}}/run={{run_ts}}.parquet"
+
+# Where to store the Parquet and with what creds
+# Target storage (choose one)
+target:
+  type: gcs     # gcs | s3 | | azure | local
+  # Optional global default object_name (templated). Per-source overrides take precedence.
+  object_name: "exports/{{schema}}/{{table}}/{{part_date}}/run={{run_ts}}.parquet"
+  gcs:
+    bucket: your_GCP_bucket
+    service_account_key_file: path to serivce account key.json
+  # s3:
+  #   bucket: my-s3-bucket
+  #   region: us-east-1
+  #   aws_access_key_id: YOUR_KEY
+  #   aws_secret_access_key: YOUR_SECRET
+  #   # aws_session_token: OPTIONAL
+  # azure:
+  #   container: my-container
+  #   account_name: myaccount
+  #   account_key: "YOUR_ACCOUNT_KEY"
+
+# IO and tuning
+io:
+  chunksize: 100000
+  parquet_compression: snappy   # snappy | gzip | zstd | none
+  # Where to write the local parquet file before upload
+  local_temp_dir: /tmp
+  # Extra kwargs passed to pandas.read_sql_query (optional)
+  # pandas_read_sql_kwargs:
+  #   parse_dates: ["modifiedon"]
+

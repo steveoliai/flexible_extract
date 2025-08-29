@@ -1,0 +1,525 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Rylos YAML Config Editor</title>
+  <style>
+    body {
+      background-color: #1E1E1E;
+      color: #F4F4F4;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      text-align: center;
+      padding: 20px;
+      background-color: #2C2C2C;
+      border-bottom: 3px solid #D9822B;
+    }
+    header img {
+      max-height: 80px;
+    }
+    .container {
+      padding: 20px;
+    }
+    h1, h2 {
+      color: #D9822B;
+    }
+    input, select, textarea {
+      background-color: #2C2C2C;
+      color: #F4F4F4;
+      border: 1px solid #555;
+      padding: 5px;
+      border-radius: 4px;
+    }
+    button {
+      background-color: #D9822B;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #b9651d;
+    }
+    pre {
+      background-color: #2C2C2C;
+      padding: 10px;
+      border-radius: 5px;
+      overflow-x: auto;
+    }
+    .section {
+      margin-bottom: 30px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="ry_logo2.png" alt="Rylos Data Solutions Logo" />
+  </header>
+  <div class="container">
+    
+    <div class="container">
+        <div class="header">
+            <h1>🔧 YAML Configuration Editor</h1>
+            <p>Edit your database extraction configuration with ease</p>
+        </div>
+        
+        <div class="content">
+            <div class="editor-panel">
+                <!-- Source Database Configuration -->
+                <div class="section">
+                    <h3>Database Connection</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Database Type:</label>
+                            <select id="db_type">
+                                <option value="postgresql">PostgreSQL</option>
+                                <option value="mysql">MySQL</option>
+                                <option value="oracle">Oracle</option>
+                                <option value="mssql">SQL Server</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Host:</label>
+                            <input type="text" id="db_host" value="127.0.0.1">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Port:</label>
+                            <input type="number" id="db_port" value="5432">
+                        </div>
+                        <div class="form-group">
+                            <label>Database:</label>
+                            <input type="text" id="db_database" value="postgres">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>User:</label>
+                            <input type="text" id="db_user" value="user">
+                        </div>
+                        <div class="form-group">
+                            <label>Password:</label>
+                            <input type="password" id="db_password" value="secret">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sources Configuration -->
+                <div class="section">
+                    <h3>Data Sources</h3>
+                    <div class="sources-container" id="sources-container">
+                        <!-- Sources will be dynamically added here -->
+                    </div>
+                    <button class="add-source" onclick="addSource()">+ Add New Source</button>
+                </div>
+
+                <!-- Target Configuration -->
+                <div class="section">
+                    <h3>Target Storage</h3>
+                    <div class="form-group">
+                        <label>Storage Type:</label>
+                        <select id="target_type" onchange="toggleTargetConfig()">
+                            <option value="gcs">Google Cloud Storage</option>
+                            <option value="s3">Amazon S3</option>
+                            <option value="azure">Azure Storage</option>
+                            <option value="local">Local Storage</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Global Object Name Template:</label>
+                        <input type="text" id="global_object_name" value="exports/{{schema}}/{{table}}/{{part_date}}/run={{run_ts}}.parquet">
+                    </div>
+                    
+                    <!-- GCS Config -->
+                    <div class="target-config active" id="gcs-config">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>GCS Bucket:</label>
+                                <input type="text" id="gcs_bucket" value="your_GCP_bucket">
+                            </div>
+                            <div class="form-group">
+                                <label>Service Account Key File:</label>
+                                <input type="text" id="gcs_key_file" value="path to serivce account key.json">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- S3 Config -->
+                    <div class="target-config" id="s3-config">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>S3 Bucket:</label>
+                                <input type="text" id="s3_bucket" value="my-s3-bucket">
+                            </div>
+                            <div class="form-group">
+                                <label>Region:</label>
+                                <input type="text" id="s3_region" value="us-east-1">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>AWS Access Key ID:</label>
+                                <input type="text" id="s3_access_key" value="YOUR_KEY">
+                            </div>
+                            <div class="form-group">
+                                <label>AWS Secret Access Key:</label>
+                                <input type="password" id="s3_secret_key" value="YOUR_SECRET">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Azure Config -->
+                    <div class="target-config" id="azure-config">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Container:</label>
+                                <input type="text" id="azure_container" value="my-container">
+                            </div>
+                            <div class="form-group">
+                                <label>Account Name:</label>
+                                <input type="text" id="azure_account_name" value="myaccount">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Account Key:</label>
+                            <input type="password" id="azure_account_key" value="YOUR_ACCOUNT_KEY">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- IO Configuration -->
+                <div class="section">
+                    <h3>IO & Performance Settings</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Chunk Size:</label>
+                            <input type="number" id="io_chunksize" value="100000">
+                        </div>
+                        <div class="form-group">
+                            <label>Parquet Compression:</label>
+                            <select id="io_compression">
+                                <option value="snappy">Snappy</option>
+                                <option value="gzip">GZIP</option>
+                                <option value="zstd">ZSTD</option>
+                                <option value="none">None</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Local Temp Directory:</label>
+                        <input type="text" id="io_temp_dir" value="/tmp">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="preview-panel">
+                <h3 style="color: #2c3e50; margin-bottom: 20px;">📄 YAML Preview</h3>
+                <div class="yaml-output" id="yaml-output"></div>
+            </div>
+        </div>
+        
+        <div class="actions">
+            <button class="download-btn" onclick="downloadYaml()">⬇️ Download config.yaml</button>
+        </div>
+    </div>
+
+    <script>
+        let sourceCounter = 0;
+        let sources = [
+            {
+                name: 'parenttable',
+                schema: 'bigclient',
+                table: 'parenttable',
+                timestamp_column: 'createdon',
+                timestamp_utc: true,
+                timestamp_naive: true,
+                last_n_days: 3,
+                upper_bound_inclusive: false,
+                output_filename: '{{schema}}_{{table}}_{{part_date}}.parquet',
+                object_name: 'exports/{{schema}}/{{table}}/dt={{part_date}}/extract_{{run_ts}}.parquet',
+                where_extra: '',
+                query: ''
+            },
+            {
+                name: 'childtable',
+                schema: 'bigclient',
+                table: 'childtable',
+                timestamp_column: 'modifiedon',
+                timestamp_utc: true,
+                timestamp_naive: true,
+                last_n_days: 1,
+                upper_bound_inclusive: true,
+                output_filename: '',
+                object_name: '',
+                where_extra: '',
+                query: ''
+            },
+            {
+                name: 'simplequery',
+                schema: '',
+                table: '',
+                timestamp_column: 'modifiedon',
+                timestamp_utc: true,
+                timestamp_naive: true,
+                last_n_days: 1,
+                upper_bound_inclusive: false,
+                output_filename: 'simplequery_{{part_date}}.parquet',
+                object_name: 'exports/simplequery/dt={{part_date}}/users_{{run_ts}}.parquet',
+                where_extra: '',
+                query: 'SELECT *\nFROM bigclient.childtable\nWHERE 1 = 1\n-- this will be converted to subquery and additional WHERE clause injected with timestamp condition'
+            }
+        ];
+
+        function toggleTargetConfig() {
+            const targetType = document.getElementById('target_type').value;
+            const configs = document.querySelectorAll('.target-config');
+            configs.forEach(config => config.classList.remove('active'));
+            document.getElementById(targetType + '-config').classList.add('active');
+            updateYaml();
+        }
+
+        function addSource() {
+            const newSource = {
+                name: `source_${sourceCounter++}`,
+                schema: '',
+                table: '',
+                timestamp_column: '',
+                timestamp_utc: true,
+                timestamp_naive: true,
+                last_n_days: 1,
+                upper_bound_inclusive: false,
+                output_filename: '',
+                object_name: '',
+                where_extra: '',
+                query: ''
+            };
+            sources.push(newSource);
+            renderSources();
+            updateYaml();
+        }
+
+        function removeSource(index) {
+            sources.splice(index, 1);
+            renderSources();
+            updateYaml();
+        }
+
+        function renderSources() {
+            const container = document.getElementById('sources-container');
+            container.innerHTML = '';
+
+            sources.forEach((source, index) => {
+                const sourceDiv = document.createElement('div');
+                sourceDiv.className = 'source-item';
+                sourceDiv.innerHTML = `
+                    <button class="remove-source" onclick="removeSource(${index})">×</button>
+                    <h4>Source ${index + 1}: ${source.name}</h4>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Name:</label>
+                            <input type="text" value="${source.name}" onchange="updateSource(${index}, 'name', this.value)">
+                        </div>
+                        <div class="form-group">
+                            <label>Timestamp Column:</label>
+                            <input type="text" value="${source.timestamp_column}" onchange="updateSource(${index}, 'timestamp_column', this.value)">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Schema:</label>
+                            <input type="text" value="${source.schema}" onchange="updateSource(${index}, 'schema', this.value)" ${source.query ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>Table:</label>
+                            <input type="text" value="${source.table}" onchange="updateSource(${index}, 'table', this.value)" ${source.query ? 'disabled' : ''}>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Custom Query (optional - leave empty for table extract):</label>
+                        <textarea onchange="updateSource(${index}, 'query', this.value)" placeholder="Leave empty for table extract">${source.query}</textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Last N Days:</label>
+                            <input type="number" value="${source.last_n_days}" onchange="updateSource(${index}, 'last_n_days', parseInt(this.value))">
+                        </div>
+                        <div class="form-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" ${source.upper_bound_inclusive ? 'checked' : ''} onchange="updateSource(${index}, 'upper_bound_inclusive', this.checked)">
+                                <label>Upper Bound Inclusive</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="checkbox-group">
+                        <input type="checkbox" ${source.timestamp_utc ? 'checked' : ''} onchange="updateSource(${index}, 'timestamp_utc', this.checked)">
+                        <label>Timestamp UTC</label>
+                    </div>
+                    
+                    <div class="checkbox-group">
+                        <input type="checkbox" ${source.timestamp_naive ? 'checked' : ''} onchange="updateSource(${index}, 'timestamp_naive', this.checked)">
+                        <label>Timestamp Naive</label>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Output Filename Template (optional):</label>
+                        <input type="text" value="${source.output_filename}" onchange="updateSource(${index}, 'output_filename', this.value)" placeholder="{{schema}}_{{table}}_{{part_date}}.parquet">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Object Name Template (optional):</label>
+                        <input type="text" value="${source.object_name}" onchange="updateSource(${index}, 'object_name', this.value)" placeholder="exports/{{schema}}/{{table}}/dt={{part_date}}/extract_{{run_ts}}.parquet">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Extra WHERE Clause (optional):</label>
+                        <input type="text" value="${source.where_extra}" onchange="updateSource(${index}, 'where_extra', this.value)" placeholder="status <> 'TEST'">
+                    </div>
+                `;
+                container.appendChild(sourceDiv);
+            });
+        }
+
+        function updateSource(index, field, value) {
+            sources[index][field] = value;
+            
+            // If query is filled, disable schema and table
+            if (field === 'query') {
+                renderSources();
+            }
+            
+            updateYaml();
+        }
+
+        function updateYaml() {
+            const config = {
+                source_database: {
+                    type: document.getElementById('db_type').value,
+                    host: document.getElementById('db_host').value,
+                    port: parseInt(document.getElementById('db_port').value),
+                    database: document.getElementById('db_database').value,
+                    user: document.getElementById('db_user').value,
+                    password: document.getElementById('db_password').value
+                },
+                sources: sources.map(source => {
+                    const sourceConfig = {
+                        name: source.name,
+                        timestamp_column: source.timestamp_column,
+                        timestamp_utc: source.timestamp_utc,
+                        timestamp_naive: source.timestamp_naive,
+                        last_n_days: source.last_n_days,
+                        upper_bound_inclusive: source.upper_bound_inclusive
+                    };
+
+                    if (source.query) {
+                        sourceConfig.query = source.query;
+                    } else {
+                        if (source.schema) sourceConfig.schema = source.schema;
+                        if (source.table) sourceConfig.table = source.table;
+                    }
+
+                    if (source.output_filename) sourceConfig.output_filename = source.output_filename;
+                    if (source.object_name) sourceConfig.object_name = source.object_name;
+                    if (source.where_extra) sourceConfig.where_extra = source.where_extra;
+
+                    return sourceConfig;
+                }),
+                target: {
+                    type: document.getElementById('target_type').value,
+                    object_name: document.getElementById('global_object_name').value
+                },
+                io: {
+                    chunksize: parseInt(document.getElementById('io_chunksize').value),
+                    parquet_compression: document.getElementById('io_compression').value,
+                    local_temp_dir: document.getElementById('io_temp_dir').value
+                }
+            };
+
+            // Add target-specific configuration
+            const targetType = document.getElementById('target_type').value;
+            switch(targetType) {
+                case 'gcs':
+                    config.target.gcs = {
+                        bucket: document.getElementById('gcs_bucket').value,
+                        service_account_key_file: document.getElementById('gcs_key_file').value
+                    };
+                    break;
+                case 's3':
+                    config.target.s3 = {
+                        bucket: document.getElementById('s3_bucket').value,
+                        region: document.getElementById('s3_region').value,
+                        aws_access_key_id: document.getElementById('s3_access_key').value,
+                        aws_secret_access_key: document.getElementById('s3_secret_key').value
+                    };
+                    break;
+                case 'azure':
+                    config.target.azure = {
+                        container: document.getElementById('azure_container').value,
+                        account_name: document.getElementById('azure_account_name').value,
+                        account_key: document.getElementById('azure_account_key').value
+                    };
+                    break;
+            }
+
+            const yamlString = jsyaml.dump(config, {
+                indent: 2,
+                lineWidth: 120,
+                quotingType: '"',
+                forceQuotes: false
+            });
+
+            document.getElementById('yaml-output').textContent = yamlString;
+        }
+
+        function downloadYaml() {
+            const yamlContent = document.getElementById('yaml-output').textContent;
+            const blob = new Blob([yamlContent], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'config.yaml';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Add event listeners to all form elements
+        document.addEventListener('DOMContentLoaded', function() {
+            renderSources();
+            updateYaml();
+
+            // Add event listeners for all basic form fields
+            const formFields = [
+                'db_type', 'db_host', 'db_port', 'db_database', 'db_user', 'db_password',
+                'target_type', 'global_object_name', 'gcs_bucket', 'gcs_key_file',
+                's3_bucket', 's3_region', 's3_access_key', 's3_secret_key',
+                'azure_container', 'azure_account_name', 'azure_account_key',
+                'io_chunksize', 'io_compression', 'io_temp_dir'
+            ];
+
+            formFields.forEach(fieldId => {
+                const element = document.getElementById(fieldId);
+                if (element) {
+                    element.addEventListener('change', updateYaml);
+                    element.addEventListener('input', updateYaml);
+                }
+            });
+        });
+    </script>
+  <!-- Keep existing app content -->
+  </div>
+</body>
+</html>
