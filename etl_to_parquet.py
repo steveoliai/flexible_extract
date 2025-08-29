@@ -7,13 +7,19 @@ OPTIMIZED VERSION with:
 - Optimized timestamp coercion logic
 - Pre-computed Arrow schemas
 - Better memory management
+- Yesterday's date (YYYY-MM-DD) in file naming
 
 - Multiple sources (table or custom query)
 - Optional last N days on a timestamp column
 - Upper bound control: < or <=
-- Single Parquet per source per run (no daily partitioning)
+- Single Parquet per source per run
 - Uploads to GCS, S3, or Azure
 - Skips upload when empty (configurable via io.skip_empty_uploads)
+
+Template placeholders available:
+- {{schema}}, {{table}}, {{run_ts}} - source info and run timestamp
+- {{from_ts}}, {{to_ts}} - date range in YYYYMMDD format
+- {{yesterday}} - previous day in YYYY-MM-DD format
 
 CLI:
   python etl_to_parquet.py --config config.yml [--chunksize 100000] [--dry-run] [--max-workers 4]
@@ -300,18 +306,24 @@ def make_names(
 ) -> Tuple[str, Optional[str]]:
     """
     Return (local_filename, object_name) with optimized templating.
+    Uses yesterday's date in YYYY-MM-DD format.
     """
     schema = src.get("schema") or ""
     table = src.get("table") or (src.get("name") or f"query_{uuid.uuid4().hex[:8]}")
+    
+    # Calculate yesterday's date
+    yesterday = (run_ts - dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    
     ctx = {
         "schema": schema,
         "table": table,
         "run_ts": run_ts.strftime("%Y%m%d_%H%M%S"),
         "from_ts": (from_ts.strftime("%Y%m%d") if from_ts else ""),
         "to_ts": (to_ts.strftime("%Y%m%d") if to_ts else ""),
+        "yesterday": yesterday,
     }
 
-    base = src.get("output_filename") or "{schema}_{table}_{from_ts}_to_{to_ts}_{run_ts}.parquet"
+    base = src.get("output_filename") or "{schema}_{table}_{yesterday}_{run_ts}.parquet"
     local_name = render_template(base, ctx)
     if not local_name.lower().endswith(".parquet"):
         local_name += ".parquet"
@@ -334,12 +346,17 @@ def maybe_render_global_object_name(
         return None
     schema = src.get("schema") or ""
     table = src.get("table") or (src.get("name") or "query")
+    
+    # Calculate yesterday's date
+    yesterday = (run_ts - dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    
     ctx = {
         "schema": schema,
         "table": table,
         "run_ts": run_ts.strftime("%Y%m%d_%H%M%S"),
         "from_ts": (from_ts.strftime("%Y%m%d") if from_ts else ""),
         "to_ts": (to_ts.strftime("%Y%m%d") if to_ts else ""),
+        "yesterday": yesterday,
     }
     return render_template(global_obj_name, ctx)
 
