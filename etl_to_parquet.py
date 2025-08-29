@@ -187,18 +187,44 @@ def build_statement(
     upper_inclusive: bool,
 ):
     """
-    Table mode: adds WHERE ts >= :from_utc AND ts <(=) :to_utc if timestamp_column provided.
-    Query mode: you can reference :from_utc and :to_utc yourself.
+    Table mode:
+      - Adds WHERE ts >= :from_utc AND ts <(=) :to_utc if timestamp_column provided.
+
+    Query mode:
+      - If query already references :from_utc / :to_utc, pass params through.
+      - Else, if timestamp_column provided AND from/to given, wrap the query and inject a WHERE on that column.
+        SELECT * FROM ( <original query> ) sub WHERE sub.<timestamp_column> >= :from_utc AND sub.<op_to> :to_utc
     Returns (statement, params).
     """
     query = src.get("query")
+    ts_col_name = src.get("timestamp_column")
+    op_to = "<=" if upper_inclusive else "<"
+
     if query:
         params = {}
-        if from_utc is not None and to_utc is not None:
-            params["from_utc"] = from_utc
-            params["to_utc"] = to_utc
+        if (from_utc is not None) and (to_utc is not None):
+            # If caller wrote the predicates explicitly, just bind
+            if (":from_utc" in query) or (":to_utc" in query):
+                params["from_utc"] = from_utc
+                params["to_utc"] = to_utc
+                return text(query), params
+
+            # Otherwise, inject using timestamp_column if provided
+            if ts_col_name:
+                wrapped = f"""
+                SELECT * FROM (
+                    {query}
+                ) sub
+                WHERE sub.{ts_col_name} >= :from_utc
+                  AND sub.{ts_col_name} {op_to} :to_utc
+                """
+                params["from_utc"] = from_utc
+                params["to_utc"] = to_utc
+                return text(wrapped), params
+            # No way to inject safely without knowing the column
         return text(query), params
 
+    # ---- Table mode ----
     schema = src.get("schema")
     table = src.get("table")
     if not (schema and table):
@@ -208,15 +234,13 @@ def build_statement(
     tbl = Table(table, md, schema=schema, autoload_with=engine)
     stmt = select(tbl)
 
-    ts_col_name = src.get("timestamp_column")
+    params = {}
     last_n_days = src.get("last_n_days")
 
-    params = {}
     if ts_col_name and (last_n_days or (from_utc is not None and to_utc is not None)):
         if ts_col_name not in tbl.c:
             raise ValueError(f"timestamp_column '{ts_col_name}' not found in {schema}.{table}")
         col_qualified = f"{tbl.c[ts_col_name].compile(dialect=engine.dialect)}"
-        op_to = "<=" if upper_inclusive else "<"
         if from_utc is not None and to_utc is not None:
             stmt = stmt.where(text(f"{col_qualified} >= :from_utc"))
             stmt = stmt.where(text(f"{col_qualified} {op_to} :to_utc"))
@@ -240,15 +264,32 @@ def extract_to_parquet(
     out_path: str,
     chunksize: int,
     parquet_compression: str,
+    ts_coerce: Optional[Dict[str, Any]] = None,
 ) -> int:
     total_rows = 0
     writer = None
+    ts_cols = (ts_coerce or {}).get("columns", []) or []
+    coerce_utc = bool((ts_coerce or {}).get("utc", True))
+    make_naive = bool((ts_coerce or {}).get("naive", True))
+
     try:
         for i, chunk in enumerate(pd.read_sql_query(stmt, engine, params=params, chunksize=chunksize)):
             if chunk is None or chunk.empty:
                 if i == 0:
                     logger.info("    (no rows)")
                 break
+
+            # --- Timestamp coercion (so Parquet gets real timestamps, not int64) ---
+            for col in ts_cols:
+                if col in chunk.columns:
+                    # Coerce to datetime; errors='coerce' turns bad values into NaT
+                    chunk[col] = pd.to_datetime(chunk[col], utc=coerce_utc, errors="coerce")
+                    if make_naive:
+                        # Convert to UTC-naive (many readers prefer this)
+                        # If tz-aware, convert to UTC then drop tz
+                        if getattr(chunk[col].dtype, "tz", None) is not None:
+                            chunk[col] = chunk[col].dt.tz_convert("UTC").dt.tz_localize(None)
+
             table = pa.Table.from_pandas(chunk, preserve_index=False)
             if writer is None:
                 os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
@@ -365,8 +406,15 @@ def main():
 
         # Window
         last_n_days = src.get("last_n_days")
-        from_utc = (now_utc - dt.timedelta(days=int(last_n_days))) if last_n_days else None
-        to_utc = now_utc
+        if last_n_days:
+            n = int(last_n_days)
+            # Start of "today" in UTC (00:00)
+            today_start_utc = dt.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            to_utc = today_start_utc
+            from_utc = today_start_utc - dt.timedelta(days=n)
+        else:
+            from_utc = None
+            to_utc = now_utc  # if no last_n_days, default to "up to now"
         upper_inclusive = bool(src.get("upper_bound_inclusive", False))
 
         # Statement
@@ -376,9 +424,20 @@ def main():
         local_filename, object_name_override = make_names(src, run_ts, from_utc, to_utc)
         local_path = os.path.join(parquet_dir, local_filename)
 
+        # Format Timestamps
+        ts_cols = src.get("timestamp_columns")
+        if not ts_cols:
+            # default to the primary timestamp_column if present
+            ts_cols = [src["timestamp_column"]] if src.get("timestamp_column") else []
+        ts_cfg = {
+            "columns": ts_cols,
+            "utc": bool(src.get("timestamp_utc", True)),
+            "naive": bool(src.get("timestamp_naive", True)),
+        }
+
         # Extract
         logger.info("  Extracting → %s", local_path)
-        rows = extract_to_parquet(engine, stmt, params, local_path, chunksize, parquet_compression)
+        rows = extract_to_parquet(engine, stmt, params, local_path, chunksize, parquet_compression, ts_coerce=ts_cfg)
         logger.info("  Rows: %d", rows)
 
         # Skip upload if empty
