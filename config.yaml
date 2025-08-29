@@ -30,8 +30,8 @@ sources:
     last_n_days: 3                 # window start = now_utc - 3 days
     upper_bound_inclusive: false   # <-- NEW: use < to_utc (false) or <= to_utc (true)
     # Per-partition templated names
-    output_filename: "{{schema}}_{{table}}_{{part_date}}.parquet"
-    object_name: "exports/{{schema}}/{{table}}/dt={{part_date}}/extract_{{run_ts}}.parquet"
+    output_filename: "{{schema}}_{{table}}_{{yesterday}}.parquet"
+    object_name: "exports/{{schema}}/{{table}}/dt={{yesterday}}/extract_{{run_ts}}.parquet"
     # Optional extra row filter (SQL text)
     # where_extra: "status <> 'TEST'"
 
@@ -59,15 +59,15 @@ sources:
     timestamp_columns: [modifiedon]   # <-- optional: ensure Parquet writes real datetimes
     timestamp_naive: true           # drop tz info so Parquet is tz‑naive UTC (default true)
     last_n_days: 1
-    output_filename: "simplequery_{{part_date}}.parquet"
-    object_name: "exports/simplequery/dt={{part_date}}/run={{run_ts}}.parquet"
+    output_filename: "simplequery_{{yesterday}}.parquet"
+    object_name: "exports/simplequery/dt={{yesterday}}/run={{run_ts}}.parquet"
 
 # Where to store the Parquet and with what creds
 # Target storage (choose one)
 target:
   type: gcs     # gcs | s3 | | azure | local
   # Optional global default object_name (templated). Per-source overrides take precedence.
-  object_name: "exports/{{schema}}/{{table}}/{{part_date}}/run={{run_ts}}.parquet"
+  object_name: "exports/{{schema}}/{{table}}/{{yesterday}}/run={{run_ts}}.parquet"
   gcs:
     bucket: your_GCP_bucket
     service_account_key_file: path to serivce account key.json
