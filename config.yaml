@@ -91,4 +91,5 @@ io:
   # Extra kwargs passed to pandas.read_sql_query (optional)
   # pandas_read_sql_kwargs:
   #   parse_dates: ["modifiedon"]
-
+  #  avoid reflection, use quoted text SELECT instead
+  default_use_text_select: false   # can set true if you like it everywhere

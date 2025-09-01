@@ -175,6 +175,7 @@ io:
   local_temp_dir: /tmp                 # Temporary directory for local files
   pandas_read_sql_kwargs:              # Additional pandas.read_sql_query options
     parse_dates: ["modifiedon"]        # Example: parse specific columns as dates
+  default_use_text_select: false   # avoid reflection, use quoted text SELECT instead - set to truefor Oracle
 ```
 
 ## Usage

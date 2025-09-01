@@ -152,6 +152,8 @@ def get_thread_engine(db_conf: Dict[str, Any]) -> Engine:
         )
     return _thread_local.engine
 
+def _quoted(engine, ident: str) -> str:
+    return engine.dialect.identifier_preparer.quote(ident)
 
 def _guess_epoch_unit_vectorized(int_series: pd.Series) -> str:
     """
@@ -371,21 +373,20 @@ def build_statement(
     to_utc: Optional[dt.datetime],
     upper_inclusive: bool,
 ):
-    """Build SQL statement and parameters for extraction."""
     query = src.get("query")
     ts_col_name = src.get("timestamp_column")
     op_to = "<=" if upper_inclusive else "<"
 
+    # --- Custom query mode ---
     if query:
         params = {}
         if (from_utc is not None) and (to_utc is not None):
-            # If caller wrote the predicates explicitly, just bind
+            # If caller already uses :from_utc / :to_utc, just bind them.
             if (":from_utc" in query) or (":to_utc" in query):
                 params["from_utc"] = from_utc
                 params["to_utc"] = to_utc
                 return text(query), params
-
-            # Otherwise, inject using timestamp_column if provided
+            # Otherwise, inject a WHERE using timestamp_column if provided.
             if ts_col_name:
                 wrapped = f"""
                 SELECT * FROM (
@@ -399,34 +400,72 @@ def build_statement(
                 return text(wrapped), params
         return text(query), params
 
-    # ---- Table mode ----
+    # --- Table mode ---
     schema = src.get("schema")
     table = src.get("table")
     if not (schema and table):
-        raise ValueError("Each source must provide either 'query' or both 'schema' and 'table'.")
+        raise ValueError("Provide either 'query' or both 'schema' and 'table'.")
 
-    md = MetaData()
-    tbl = Table(table, md, schema=schema, autoload_with=engine)
-    stmt = select(tbl)
+    # If the user asked to avoid reflection (or we choose to on Oracle), use text.
+    use_text = bool(src.get("use_text_select", False))
+    # optional global default
+    # use_text |= bool(io_conf.get("default_use_text_select", False))  # add this if you pass io_conf here
 
     params = {}
-    last_n_days = src.get("last_n_days")
+    if use_text:
+        # Build a quoted SELECT ... FROM schema.table with optional WHEREs
+        q_schema = _quoted(engine, schema)
+        q_table  = _quoted(engine, table)
+        sql = f"SELECT * FROM {q_schema}.{q_table}"
+        where = []
+        if ts_col_name and (from_utc is not None and to_utc is not None):
+            q_ts = _quoted(engine, ts_col_name)
+            where.append(f"{q_ts} >= :from_utc AND {q_ts} {op_to} :to_utc")
+            params["from_utc"] = from_utc
+            params["to_utc"] = to_utc
+        if src.get("where_extra"):
+            where.append(f"({src['where_extra']})")
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        return text(sql), params
 
-    if ts_col_name and (last_n_days or (from_utc is not None and to_utc is not None)):
-        if ts_col_name not in tbl.c:
-            raise ValueError(f"timestamp_column '{ts_col_name}' not found in {schema}.{table}")
-        col_qualified = f"{tbl.c[ts_col_name].compile(dialect=engine.dialect)}"
-        if from_utc is not None and to_utc is not None:
+    # Otherwise try normal reflection; on failure, fall back to text mode automatically.
+    try:
+        md = MetaData()
+        tbl = Table(table, md, schema=schema, autoload_with=engine)
+        stmt = select(tbl)
+
+        if ts_col_name and (from_utc is not None and to_utc is not None):
+            # qualify the generated column name for this dialect
+            col_qualified = f"{tbl.c[ts_col_name].compile(dialect=engine.dialect)}"
             stmt = stmt.where(text(f"{col_qualified} >= :from_utc"))
             stmt = stmt.where(text(f"{col_qualified} {op_to} :to_utc"))
             params["from_utc"] = from_utc
             params["to_utc"] = to_utc
 
-    where_extra = src.get("where_extra")
-    if where_extra:
-        stmt = stmt.where(text(where_extra))
+        if src.get("where_extra"):
+            stmt = stmt.where(text(src["where_extra"]))
 
-    return stmt, params
+        return stmt, params
+
+    except Exception as e:
+        # Log and fall back to text mode
+        logger.warning("Reflection failed for %s.%s (%s). Falling back to text SELECT.",
+                       schema, table, e)
+        q_schema = _quoted(engine, schema)
+        q_table  = _quoted(engine, table)
+        sql = f"SELECT * FROM {q_schema}.{q_table}"
+        where = []
+        if ts_col_name and (from_utc is not None and to_utc is not None):
+            q_ts = _quoted(engine, ts_col_name)
+            where.append(f"{q_ts} >= :from_utc AND {q_ts} {op_to} :to_utc")
+            params["from_utc"] = from_utc
+            params["to_utc"] = to_utc
+        if src.get("where_extra"):
+            where.append(f"({src['where_extra']})")
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        return text(sql), params
 
 
 # -----------------------
