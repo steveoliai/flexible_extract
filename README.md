@@ -254,4 +254,4 @@ sources:
 - Ensure sufficient local disk space in `local_temp_dir`
 
 **Other Issues:**
-- During testing on a table in PostgreSQL with a uuid column, I needed to cast the column as a varchar.  This can be done using a query or creating a view which does it on the database and configuring it as a source table.
+- During testing on a table in PostgreSQL with a uuid column, I needed to cast the column as a varchar.  This can be done using a query or creating a view which does it on the source database and configuring it as a source table.
