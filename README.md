@@ -19,6 +19,9 @@ You can then either import the Parquet files into your Data Warehouse of choice,
 ```bash
 pip install -r requirements.txt
 ```
+## Tips
+
+Create and use a "read-only" user on your source database(s). 
 
 ## Configuration
 
@@ -249,3 +252,6 @@ sources:
 - Verify cloud storage credentials and permissions
 - Check that the specified bucket/container exists
 - Ensure sufficient local disk space in `local_temp_dir`
+
+**Other Issues:**
+- During testing on a table in PostgreSQL with a uuid column, I needed to cast the column as a varchar.  This can be done using a query or creating a view which does it on the database and configuring it as a source.
